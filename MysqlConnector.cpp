@@ -8,22 +8,26 @@
 #include <cstdio>
 #include <string>
 
-#include "mysql_connector.h"
+#include "MysqlConnector.h"
+
+#include <iostream>
+using namespace std;
 
 MysqlConnector::MysqlConnector()
-        : _conn_ptr(0)
+        : _conn_ptr(NULL)
 {
 
 }
 
 MysqlConnector::~MysqlConnector()
 {
-        dis_connect();
+        disconnect();
 }
 
-bool MysqlConnector::connect(const mysql_conn_info_t &conn_info)
+bool MysqlConnector::connect(const MysqlConnInfo &conn_info)
 {
-        if (NULL != _conn_ptr) {
+        if (_conn_ptr) 
+		{
                 return true;
         }
 
@@ -31,25 +35,33 @@ bool MysqlConnector::connect(const mysql_conn_info_t &conn_info)
         _conn_info = conn_info;
         _conn_ptr = new MYSQL();
 
-        if (NULL == mysql_init(_conn_ptr)) {
+        if (!mysql_init(_conn_ptr)) 
+		{
                 printf("\nmysql_init error\n");
                 delete _conn_ptr;
                 _conn_ptr = NULL;
 
                 return false;
         }
+		
+		std::string s;
+		for (size_t i = 0 ; i < conn_info.password.size(); i++) 
+		{
+			s += "*";
+		}
 
         printf("%s(%d): mysql host = %s, db = %s, user = %s, pass = %s\n", __FILE__, __LINE__,
                 conn_info.ip_addr.c_str(), conn_info.db_name.c_str(), conn_info.username.c_str(),
-                conn_info.password.c_str());
+				s.c_str());
+//                conn_info.password.c_str());
 
-        if (NULL
-                == mysql_real_connect(_conn_ptr, conn_info.ip_addr.c_str(),
+        if (!mysql_real_connect(_conn_ptr, conn_info.ip_addr.c_str(),
                         conn_info.username.c_str(), conn_info.password.c_str(),
-                        conn_info.db_name.c_str(), 0,
-                        NULL, 0)) {
+                        conn_info.db_name.c_str(), 3306,
+                        NULL, 0)) 
+		{
                 printf("%s(%d): connection mysql fails\n", __FILE__, __LINE__);
-                printf("failed to connect to database: error: [%s]\n", mysql_error(_conn_ptr));
+                printf("failed to connect to database: error: [%s]\n", this->errorMsg());
                 delete _conn_ptr;
                 _conn_ptr = NULL;
 
@@ -62,12 +74,15 @@ bool MysqlConnector::connect(const mysql_conn_info_t &conn_info)
 
 }
 
-MYSQL_RES* MysqlConnector::exec_sql_cmd(const char* sql_cmd)
+MYSQL_RES* MysqlConnector::execSqlCmd(const char* sql_cmd)
 {
         MYSQL_RES * res = NULL;
 
-        if (0 != mysql_query(_conn_ptr, sql_cmd)) {
-                return NULL;
+        if (mysql_query(_conn_ptr, sql_cmd))	// 执行语句不成功
+		{
+			printf("\texcute error: %s\n\t%s\n", sql_cmd, this->errorMsg());
+			
+            return NULL;
         }
 
         res = mysql_store_result(_conn_ptr);
@@ -75,66 +90,70 @@ MYSQL_RES* MysqlConnector::exec_sql_cmd(const char* sql_cmd)
         return res;
 }
 
-void MysqlConnector::free_res(MYSQL_RES *res)
+void MysqlConnector::freeRes(MYSQL_RES *res)
 {
         mysql_free_result(res);
 }
 
-MYSQL_ROW MysqlConnector::fetch_row(MYSQL_RES *res)
+MYSQL_ROW MysqlConnector::fetchRow(MYSQL_RES *res)
 {
         return mysql_fetch_row(res);
 }
 
-unsigned int MysqlConnector::get_row_count(MYSQL_RES *res)
+unsigned int MysqlConnector::getRowCount(MYSQL_RES *res)
 {
         return (unsigned int)mysql_num_rows(res);
 }
 
-unsigned int MysqlConnector::get_col_count(MYSQL_RES *res)
+unsigned int MysqlConnector::getColCount(MYSQL_RES *res)
 {
         return mysql_num_fields(res);
 }
 
-bool MysqlConnector::is_end(MYSQL_RES *res)
+bool MysqlConnector::isEnd(MYSQL_RES *res)
 {
         /* 如果到达结果集尾部，mysql_eof()返回非0值；
          * 如果出现错误，则返回0
          */
-        if (0 == mysql_eof(res)) {
+        if (!mysql_eof(res)) 
+		{
                 return false;
         }
 
         return true;
 }
 
-const char* MysqlConnector::get_state()
+const char* MysqlConnector::getState()
 {
         return mysql_stat(_conn_ptr);
 }
 
-bool MysqlConnector::set_charset(const char* charset)
+bool MysqlConnector::setCharset(const char* charset)
 {
         char sql_cmd[128] = {0};
         snprintf(sql_cmd, sizeof(sql_cmd) - 1, "set names %s", charset);
 
-        if (NULL == _conn_ptr) {
+        if (!_conn_ptr) 
+		{
                 return false;
         }
 
-        if (mysql_query(_conn_ptr, sql_cmd)) {
+        if (mysql_query(_conn_ptr, sql_cmd)) 
+		{
                 return true;
         }
 
         return false;
 }
-const char* MysqlConnector::error()
+const char* MysqlConnector::errorMsg()
 {
         return mysql_error(_conn_ptr);
 }
 
-void MysqlConnector::dis_connect()
+void MysqlConnector::disconnect()
 {
-        if (NULL != _conn_ptr) {
+        if (_conn_ptr) 
+		{
                 mysql_close(_conn_ptr);
                 delete _conn_ptr;
                 _conn_ptr = NULL;
